@@ -1,0 +1,33 @@
+# IntelliJ IDEA / Eclipse / VS Code
+.idea/
+*.iml
+*.sublime-project
+*.sublime-workspace
+.vscode/
+.settings/
+.classpath
+.project
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.next
+pom.xml.war
+pom.xml.gpg
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper-maven-wrapper.properties
+
+# Logs and databases
+*.log
+*.sqlite
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
