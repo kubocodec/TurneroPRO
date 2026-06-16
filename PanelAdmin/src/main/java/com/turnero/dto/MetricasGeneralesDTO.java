@@ -11,6 +11,7 @@ public class MetricasGeneralesDTO {
     private double tiempoPromedioEsperaGeneral;
     private double tiempoPromedioAtencionGeneral;
     private List<UsuarioMetricaDTO> metricasPorUsuario;
+    private java.util.Map<String, Long> distribucionCalificaciones;
 
     public long getTotalTurnosDelDia() { return totalTurnosDelDia; }
     public void setTotalTurnosDelDia(long totalTurnosDelDia) { this.totalTurnosDelDia = totalTurnosDelDia; }
@@ -24,4 +25,7 @@ public class MetricasGeneralesDTO {
     public void setTiempoPromedioAtencionGeneral(double tiempoPromedioAtencionGeneral) { this.tiempoPromedioAtencionGeneral = tiempoPromedioAtencionGeneral; }
     public List<UsuarioMetricaDTO> getMetricasPorUsuario() { return metricasPorUsuario; }
     public void setMetricasPorUsuario(List<UsuarioMetricaDTO> metricasPorUsuario) { this.metricasPorUsuario = metricasPorUsuario; }
+
+    public java.util.Map<String, Long> getDistribucionCalificaciones() { return distribucionCalificaciones; }
+    public void setDistribucionCalificaciones(java.util.Map<String, Long> distribucionCalificaciones) { this.distribucionCalificaciones = distribucionCalificaciones; }
 }

@@ -245,17 +245,25 @@ public class TurnoService implements ITurnoService{
         dto.setTotalRellamadas(rellamadasTotales);
         dto.setDetalleTurnos(detalles);
         
-        // Calcular calificaciÃ³n promedio rudimentaria
-        if (countConCalificacion > 0) {
-            String mejor = "";
-            long max = -1;
-            for (Map.Entry<String, Long> e : distCalificaciones.entrySet()) {
-                if (e.getValue() > max) {
-                    max = e.getValue();
-                    mejor = e.getKey();
-                }
-            }
-            dto.setCalificacionPromedio(mejor);
+        // Calcular calificacion promedio real
+        long sumaPonderada = 0;
+        long totalVotos = 0;
+        for (Map.Entry<String, Long> e : distCalificaciones.entrySet()) {
+            long count = e.getValue();
+            if ("EXCELENTE".equals(e.getKey())) { sumaPonderada += 4 * count; totalVotos += count; }
+            else if ("BUENO".equals(e.getKey())) { sumaPonderada += 3 * count; totalVotos += count; }
+            else if ("REGULAR".equals(e.getKey())) { sumaPonderada += 2 * count; totalVotos += count; }
+            else if ("MALO".equals(e.getKey())) { sumaPonderada += 1 * count; totalVotos += count; }
+        }
+
+        if (totalVotos > 0) {
+            double promedioNum = (double) sumaPonderada / totalVotos;
+            double porcentaje = (promedioNum / 4.0) * 100.0;
+            String nivel = "Malo";
+            if (promedioNum >= 3.5) nivel = "Excelente";
+            else if (promedioNum >= 2.5) nivel = "Bueno";
+            else if (promedioNum >= 1.5) nivel = "Regular";
+            dto.setCalificacionPromedio(String.format("%.1f%% (%s)", porcentaje, nivel));
         } else {
             dto.setCalificacionPromedio("N/A");
         }
@@ -271,11 +279,15 @@ public class TurnoService implements ITurnoService{
         
         long tiempoEsperaTotal = 0;
         long tiempoAtencionTotal = 0;
+        java.util.Map<String, Long> globalCalifs = new java.util.HashMap<>();
         
         for (Turno t : atendidos) {
             tiempoEsperaTotal += java.time.Duration.between(t.getFechaCreacion(), t.getFechaLlamada()).getSeconds();
             if (t.getFechaFinAtencion() != null) {
                 tiempoAtencionTotal += java.time.Duration.between(t.getFechaLlamada(), t.getFechaFinAtencion()).getSeconds();
+            }
+            if (t.getCalificacion() != null && !t.getCalificacion().equals("NO CALIFICADO") && !t.getCalificacion().equals("TRANSFERIDO")) {
+                globalCalifs.put(t.getCalificacion(), globalCalifs.getOrDefault(t.getCalificacion(), 0L) + 1);
             }
         }
         
@@ -285,6 +297,7 @@ public class TurnoService implements ITurnoService{
         dto.setTurnosAtendidos(atendidos.size());
         dto.setTiempoPromedioEsperaGeneral(atendidos.isEmpty() ? 0 : (double) tiempoEsperaTotal / atendidos.size());
         dto.setTiempoPromedioAtencionGeneral(atendidos.isEmpty() ? 0 : (double) tiempoAtencionTotal / atendidos.size());
+        dto.setDistribucionCalificaciones(globalCalifs);
         
         Map<Long, List<Turno>> porUsuario = atendidos.stream()
                 .filter(t -> t.getAtendidoPor() != null)
@@ -307,12 +320,23 @@ public class TurnoService implements ITurnoService{
             }
             
             String mejor = "N/A";
-            long max = -1;
+            long sumaPonderada = 0;
+            long totalVotos = 0;
             for (Map.Entry<String, Long> e : uCalifs.entrySet()) {
-                if (e.getValue() > max) {
-                    max = e.getValue();
-                    mejor = e.getKey();
-                }
+                long count = e.getValue();
+                if ("EXCELENTE".equals(e.getKey())) { sumaPonderada += 4 * count; totalVotos += count; }
+                else if ("BUENO".equals(e.getKey())) { sumaPonderada += 3 * count; totalVotos += count; }
+                else if ("REGULAR".equals(e.getKey())) { sumaPonderada += 2 * count; totalVotos += count; }
+                else if ("MALO".equals(e.getKey())) { sumaPonderada += 1 * count; totalVotos += count; }
+            }
+            if (totalVotos > 0) {
+                double promedioNum = (double) sumaPonderada / totalVotos;
+                double porcentaje = (promedioNum / 4.0) * 100.0;
+                String nivel = "Malo";
+                if (promedioNum >= 3.5) nivel = "Excelente";
+                else if (promedioNum >= 2.5) nivel = "Bueno";
+                else if (promedioNum >= 1.5) nivel = "Regular";
+                mejor = String.format("%.1f%% (%s)", porcentaje, nivel);
             }
             
             String uName = tUsr.get(0).getAtendidoPor().getNombre();
