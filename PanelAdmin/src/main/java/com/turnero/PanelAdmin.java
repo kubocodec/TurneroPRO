@@ -136,6 +136,7 @@ public class PanelAdmin extends Application {
 
         inicializarSistema();
         configurarActualizacionesAutomaticas();
+        com.turnero.serial.BotoneraLocalService.iniciar(this);
     }
 
     private BorderPane createMainLayout() {
@@ -1421,6 +1422,21 @@ private void actualizarEstadisticas() {
         if (scheduler != null) {
             scheduler.shutdown();
         }
+        com.turnero.serial.BotoneraLocalService.detener();
+    }
+
+    public void finalizarTurnoDesdeBotoneraLocal(String calificacion) {
+        Platform.runLater(() -> {
+            if (idTurnoActual == null) {
+                System.out.println("Botonera pulsada pero no hay turno activo.");
+                return;
+            }
+            Long tempId = idTurnoActual;
+            idTurnoActual = null;
+            enviarFinalizacionAtencion(tempId, calificacion, "Calificado desde botonera física local");
+            lblTurnoActual.setText("---");
+            lblCategoria.setText("Turno finalizado");
+        });
     }
 
     public static void main(String[] args) {

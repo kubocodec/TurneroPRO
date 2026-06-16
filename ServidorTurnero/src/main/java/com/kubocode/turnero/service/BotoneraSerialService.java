@@ -31,6 +31,11 @@ public class BotoneraSerialService {
 
     @PostConstruct
     public void iniciarBotonera() {
+        if ("DESHABILITADO".equalsIgnoreCase(puertoConfigurado) || "NONE".equalsIgnoreCase(puertoConfigurado)) {
+            System.out.println("[*] Botonera centralizada en servidor deshabilitada.");
+            return;
+        }
+
         System.out.println("==========================================");
         System.out.println("   INICIANDO BOTONERA FÍSICA (JAVA)       ");
         System.out.println("==========================================");

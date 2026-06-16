@@ -51,4 +51,51 @@ public class ConfigManager {
             e.printStackTrace();
         }
     }
+
+    public static String getBotoneraPuerto() {
+        File file = getConfigFile();
+        if (!file.exists()) return "COM3";
+        
+        try (FileInputStream fis = new FileInputStream(file)) {
+            Properties props = new Properties();
+            props.load(fis);
+            String puerto = props.getProperty("botonera.puerto", "COM3");
+            return (puerto != null && !puerto.trim().isEmpty()) ? puerto.trim() : "COM3";
+        } catch (IOException e) {
+            return "COM3";
+        }
+    }
+
+    public static boolean isBotoneraHabilitada() {
+        File file = getConfigFile();
+        if (!file.exists()) return false;
+        
+        try (FileInputStream fis = new FileInputStream(file)) {
+            Properties props = new Properties();
+            props.load(fis);
+            String hab = props.getProperty("botonera.habilitada", "false");
+            return Boolean.parseBoolean(hab);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    public static void saveBotoneraConfig(String puerto, boolean habilitada) {
+        Properties props = new Properties();
+        try {
+            File file = getConfigFile();
+            if (file.exists()) {
+                try (FileInputStream fis = new FileInputStream(file)) {
+                    props.load(fis);
+                }
+            }
+            props.setProperty("botonera.puerto", puerto.trim());
+            props.setProperty("botonera.habilitada", String.valueOf(habilitada));
+            try (FileOutputStream fos = new FileOutputStream(file)) {
+                props.store(fos, "Configuracion del Sistema de Turnos");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }
