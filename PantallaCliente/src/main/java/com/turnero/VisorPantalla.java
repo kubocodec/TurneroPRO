@@ -47,6 +47,9 @@ import javafx.animation.TranslateTransition;
 import javafx.animation.Interpolator;
 import javafx.application.Platform;
 import com.turnero.dto.MensajesPantallaDTO;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
+import javafx.scene.media.MediaView;
 
 public class VisorPantalla extends Application {
 
@@ -62,9 +65,12 @@ public class VisorPantalla extends Application {
     private Label fechaLabel = new Label();
 
     // Carrusel
-    private List<Image> imagenesCarrusel = new ArrayList<>();
+    private List<String> elementosCarrusel = new ArrayList<>();
     private ImageView imagenCentral = new ImageView();
-    private int indiceImagenActual = 0;
+    private int indiceElementoActual = 0;
+    private MediaView mediaView = new MediaView();
+    private MediaPlayer mediaPlayer;
+    private Timeline transitionTimer;
 
     // Tracker para el último turno llamado
     private Long ultimoIdTurno = null;
@@ -86,9 +92,8 @@ public class VisorPantalla extends Application {
             cw.start(new Stage());
             return;
         }
-        // Cargar las imágenes del carrusel
-        // cargarImagenesDesdeURLs();
-        cargarImagenesDesdeRecursos();
+        // Cargar los elementos del carrusel
+        cargarElementosDesdeServidor();
 
         relojLabel.setFont(Font.font("Arial", FontWeight.BOLD, 72));
         relojLabel.setTextFill(Color.WHITE);
@@ -169,12 +174,7 @@ public class VisorPantalla extends Application {
         turnosTimeline.setCycleCount(Timeline.INDEFINITE);
         turnosTimeline.play();
 
-        // Timeline carrusel imágenes
-        Timeline carruselTimeline = new Timeline(
-                new KeyFrame(Duration.seconds(0), e -> cambiarImagenCarrusel()),
-                new KeyFrame(Duration.seconds(8)));
-        carruselTimeline.setCycleCount(Timeline.INDEFINITE);
-        carruselTimeline.play();
+        // El carrusel se autogestiona asíncronamente al cargar los elementos
 
         // Timeline mensajes informativos dinámicos (cada 10 segundos)
         Timeline mensajesTimeline = new Timeline(
@@ -217,18 +217,34 @@ public class VisorPantalla extends Application {
         VBox imagenContainer = new VBox();
         imagenContainer.setAlignment(Pos.CENTER);
 
-        imagenCentral.setFitWidth(800);
-        imagenCentral.setFitHeight(500);
+        imagenCentral.setFitWidth(950);
+        imagenCentral.setFitHeight(590);
         imagenCentral.setPreserveRatio(false);
-        imagenCentral.setImage(imagenesCarrusel.isEmpty() ? null : imagenesCarrusel.get(0));
+
+        // Clip para esquinas redondeadas en imágenes
+        javafx.scene.shape.Rectangle clipImage = new javafx.scene.shape.Rectangle(950, 590);
+        clipImage.setArcWidth(30);
+        clipImage.setArcHeight(30);
+        imagenCentral.setClip(clipImage);
+
+        mediaView.setFitWidth(950);
+        mediaView.setFitHeight(590);
+        mediaView.setPreserveRatio(false);
+
+        // Clip para esquinas redondeadas en videos
+        javafx.scene.shape.Rectangle clipMedia = new javafx.scene.shape.Rectangle(950, 590);
+        clipMedia.setArcWidth(30);
+        clipMedia.setArcHeight(30);
+        mediaView.setClip(clipMedia);
 
         StackPane marcoImagen = new StackPane();
-        marcoImagen.setStyle("-fx-background-color: white; -fx-background-radius: 20; -fx-padding: 15;");
-        marcoImagen.getChildren().add(imagenCentral);
+        marcoImagen.setStyle("-fx-background-color: white; -fx-background-radius: 24; -fx-padding: 10; -fx-border-color: #e2e8f0; -fx-border-radius: 24; -fx-border-width: 1.5;");
+        marcoImagen.getChildren().addAll(imagenCentral, mediaView);
 
         DropShadow sombraImagen = new DropShadow();
-        sombraImagen.setRadius(25);
-        sombraImagen.setColor(Color.rgb(0, 0, 0, 0.3));
+        sombraImagen.setRadius(35);
+        sombraImagen.setOffsetY(8);
+        sombraImagen.setColor(Color.rgb(0, 0, 0, 0.15));
         marcoImagen.setEffect(sombraImagen);
 
         imagenContainer.getChildren().add(marcoImagen);
@@ -483,7 +499,7 @@ public class VisorPantalla extends Application {
     // }
     // }
 
-    private void cargarImagenesDesdeRecursos() {
+    private void cargarElementosDesdeServidor() {
         new Thread(() -> {
             try {
                 // 1. Obtener lista de nombres del servidor
@@ -498,29 +514,11 @@ public class VisorPantalla extends Application {
                         });
                 conn.disconnect();
 
-                // 2. Cargar cada imagen por su nombre
-                final List<Image> nuevas = new java.util.ArrayList<>();
-                for (String nombre : nombres) {
-                    try {
-                        String imgUrlStr = "http://" + Config.getIp() + ":" + Config.getPort()
-                                + "/api/carrusel/imagen/" + nombre;
-                        Image img = new Image(imgUrlStr, false);
-                        if (!img.isError()) {
-                            nuevas.add(img);
-                        } else {
-                            System.err.println("Error cargando imagen: " + nombre);
-                        }
-                    } catch (Exception ex) {
-                        System.err.println("Error al descargar imagen " + nombre + ": " + ex.getMessage());
-                    }
-                }
-
-                javafx.application.Platform.runLater(() -> {
-                    imagenesCarrusel.clear();
-                    imagenesCarrusel.addAll(nuevas);
-                    if (!imagenesCarrusel.isEmpty()) {
-                        imagenCentral.setImage(imagenesCarrusel.get(0));
-                    }
+                Platform.runLater(() -> {
+                    elementosCarrusel.clear();
+                    elementosCarrusel.addAll(nombres);
+                    indiceElementoActual = 0;
+                    mostrarElementoActual();
                 });
 
             } catch (Exception e) {
@@ -529,12 +527,74 @@ public class VisorPantalla extends Application {
         }).start();
     }
 
-    // ---- CAMBIAR IMAGEN ----
-    private void cambiarImagenCarrusel() {
-        if (imagenesCarrusel.isEmpty())
-            return;
-        imagenCentral.setImage(imagenesCarrusel.get(indiceImagenActual));
-        indiceImagenActual = (indiceImagenActual + 1) % imagenesCarrusel.size();
+    private void avanzarCarrusel() {
+        if (elementosCarrusel.isEmpty()) return;
+        indiceElementoActual = (indiceElementoActual + 1) % elementosCarrusel.size();
+        mostrarElementoActual();
+    }
+
+    private void mostrarElementoActual() {
+        if (elementosCarrusel.isEmpty()) return;
+
+        if (transitionTimer != null) {
+            transitionTimer.stop();
+        }
+        if (mediaPlayer != null) {
+            mediaPlayer.stop();
+            mediaPlayer.dispose();
+            mediaPlayer = null;
+        }
+
+        String nombre = elementosCarrusel.get(indiceElementoActual);
+        boolean esVideo = nombre.toLowerCase().endsWith(".mp4");
+
+        if (esVideo) {
+            imagenCentral.setVisible(false);
+            mediaView.setVisible(true);
+
+            try {
+                String videoUrlStr = "http://" + Config.getIp() + ":" + Config.getPort()
+                        + "/api/carrusel/imagen/" + nombre;
+                Media media = new Media(videoUrlStr);
+                mediaPlayer = new MediaPlayer(media);
+                mediaPlayer.setMute(true); // Silenciado por defecto para salas de espera
+                mediaView.setMediaPlayer(mediaPlayer);
+
+                mediaPlayer.setOnEndOfMedia(() -> avanzarCarrusel());
+                mediaPlayer.setOnError(() -> {
+                    System.err.println("Error al reproducir video: " + mediaPlayer.getError().getMessage());
+                    avanzarCarrusel();
+                });
+
+                mediaPlayer.play();
+            } catch (Exception ex) {
+                System.err.println("Error cargando video: " + ex.getMessage());
+                avanzarCarrusel();
+            }
+        } else {
+            mediaView.setVisible(false);
+            imagenCentral.setVisible(true);
+
+            new Thread(() -> {
+                try {
+                    String imgUrlStr = "http://" + Config.getIp() + ":" + Config.getPort()
+                            + "/api/carrusel/imagen/" + nombre;
+                    Image img = new Image(imgUrlStr, false);
+                    if (!img.isError()) {
+                        Platform.runLater(() -> {
+                            imagenCentral.setImage(img);
+                            transitionTimer = new Timeline(new KeyFrame(Duration.seconds(8), e -> avanzarCarrusel()));
+                            transitionTimer.setCycleCount(1);
+                            transitionTimer.play();
+                        });
+                    } else {
+                        Platform.runLater(this::avanzarCarrusel);
+                    }
+                } catch (Exception ex) {
+                    Platform.runLater(this::avanzarCarrusel);
+                }
+            }).start();
+        }
     }
 
     // ---- SISTEMA DE AUDIO EN COLA (TTS) ----

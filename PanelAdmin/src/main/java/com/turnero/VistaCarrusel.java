@@ -212,18 +212,28 @@ public class VistaCarrusel {
         card.setStyle("-fx-background-color: white; -fx-background-radius: 10; -fx-effect: dropshadow(gaussian,rgba(0,0,0,0.1),8,0,0,2);");
         card.setPrefWidth(160);
 
+        StackPane previewContainer = new StackPane();
+        previewContainer.setPrefSize(220, 160);
+        previewContainer.setStyle("-fx-background-color: #eef2f3; -fx-background-radius: 6;");
+
         ImageView iv = new ImageView();
         iv.setFitWidth(220);
         iv.setFitHeight(160);
         iv.setPreserveRatio(true);
 
-        new Thread(() -> {
-            try {
-                URL imgUrl = new URL("http://" + ConfigManager.getIp() + ":8080/api/carrusel/imagen/" + nombre);
-                Image img = new Image(imgUrl.toString(), 140, 100, true, true);
-                Platform.runLater(() -> iv.setImage(img));
-            } catch (Exception ignored) {}
-        }).start();
+        if (nombre.toLowerCase().endsWith(".mp4")) {
+            FontIcon playIcon = FontIcon.of(FontAwesomeSolid.PLAY_CIRCLE, 48, Color.web("#7f8c8d"));
+            previewContainer.getChildren().add(playIcon);
+        } else {
+            previewContainer.getChildren().add(iv);
+            new Thread(() -> {
+                try {
+                    URL imgUrl = new URL("http://" + ConfigManager.getIp() + ":8080/api/carrusel/imagen/" + nombre);
+                    Image img = new Image(imgUrl.toString(), 140, 100, true, true);
+                    Platform.runLater(() -> iv.setImage(img));
+                } catch (Exception ignored) {}
+            }).start();
+        }
 
         Label lblNombre = new Label(nombre.length() > 22 ? nombre.substring(0, 19) + "..." : nombre);
         lblNombre.setFont(Font.font("Arial", 11));
@@ -249,7 +259,7 @@ public class VistaCarrusel {
 
         controles.getChildren().addAll(btnArriba, btnAbajo, btnEliminar);
 
-        card.getChildren().addAll(iv, lblNombre, controles);
+        card.getChildren().addAll(previewContainer, lblNombre, controles);
         card.setPrefWidth(200);
         return card;
     }
@@ -287,16 +297,16 @@ public class VistaCarrusel {
 
     private void subirImagen() {
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("Seleccionar imagen");
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Imágenes", "*.jpg", "*.jpeg", "*.png"));
+        chooser.setTitle("Seleccionar Imagen o Video");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Archivos Multimedia", "*.jpg", "*.jpeg", "*.png", "*.mp4"));
 
         File archivo = chooser.showOpenDialog(new Stage());
         if (archivo == null) return;
 
-        // Validar tamaño (máximo 5 MB)
-        final long MAX_BYTES = 5 * 1024 * 1024L;
+        // Validar tamaño (máximo 100 MB)
+        final long MAX_BYTES = 100 * 1024 * 1024L;
         if (archivo.length() > MAX_BYTES) {
-            mostrarMensaje("❌ El archivo supera el tamaño máximo permitido (5 MB). Tamaño actual: "
+            mostrarMensaje("❌ El archivo supera el tamaño máximo permitido (100 MB). Tamaño actual: "
                     + String.format("%.1f", archivo.length() / (1024.0 * 1024.0)) + " MB", false);
             return;
         }
@@ -316,7 +326,14 @@ public class VistaCarrusel {
                     pw.append("--").append(boundary).append("\r\n");
                     pw.append("Content-Disposition: form-data; name=\"archivo\"; filename=\"")
                       .append(archivo.getName()).append("\"\r\n");
-                    pw.append("Content-Type: image/").append(archivo.getName().endsWith(".png") ? "png" : "jpeg").append("\r\n\r\n");
+                    
+                    String contentType = "application/octet-stream";
+                    String nameLower = archivo.getName().toLowerCase();
+                    if (nameLower.endsWith(".png")) contentType = "image/png";
+                    else if (nameLower.endsWith(".jpg") || nameLower.endsWith(".jpeg")) contentType = "image/jpeg";
+                    else if (nameLower.endsWith(".mp4")) contentType = "video/mp4";
+
+                    pw.append("Content-Type: ").append(contentType).append("\r\n\r\n");
                     pw.flush();
 
                     try (FileInputStream fis = new FileInputStream(archivo)) {

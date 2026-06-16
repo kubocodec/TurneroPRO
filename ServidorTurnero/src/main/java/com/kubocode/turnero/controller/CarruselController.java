@@ -43,7 +43,12 @@ public class CarruselController {
         try {
             Path dir = getDirectorio();
             File[] archivos = dir.toFile().listFiles(
-                    f -> f.isFile() && (f.getName().endsWith(".jpg") || f.getName().endsWith(".png") || f.getName().endsWith(".jpeg"))
+                    f -> f.isFile() && (
+                            f.getName().toLowerCase().endsWith(".jpg") ||
+                            f.getName().toLowerCase().endsWith(".png") ||
+                            f.getName().toLowerCase().endsWith(".jpeg") ||
+                            f.getName().toLowerCase().endsWith(".mp4")
+                    )
             );
             if (archivos == null) return Collections.emptyList();
             
