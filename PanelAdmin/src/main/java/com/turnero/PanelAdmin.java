@@ -55,6 +55,7 @@ public class PanelAdmin extends Application {
     private ComboBox<Categoria> comboCategorias;
     private ComboBox<String> comboTipo;
 
+    private boolean calificacionNotificada = false;
 
     @Override
     public void start(Stage stage) {
@@ -94,17 +95,19 @@ public class PanelAdmin extends Application {
             Tab tabUsers  = new Tab("Usuarios", new ScrollPane(new VistaUsuarios().construir()));
             Tab tabCats   = new Tab("Categorías", new ScrollPane(new VistaCategorias().construir()));
             Tab tabCarr   = new Tab("Carrusel", new ScrollPane(new VistaCarrusel().construir()));
+            Tab tabMetricas = new Tab("Métricas", new ScrollPane(new VistaMetricas().construir()));
             
             tabTurnos.setGraphic(FontIcon.of(org.kordamp.ikonli.fontawesome5.FontAwesomeSolid.CLIPBOARD_LIST, 16));
             tabUsers.setGraphic(FontIcon.of(org.kordamp.ikonli.fontawesome5.FontAwesomeSolid.USERS, 16));
             tabCats.setGraphic(FontIcon.of(org.kordamp.ikonli.fontawesome5.FontAwesomeSolid.FOLDER_OPEN, 16));
             tabCarr.setGraphic(FontIcon.of(org.kordamp.ikonli.fontawesome5.FontAwesomeSolid.IMAGES, 16));
+            tabMetricas.setGraphic(FontIcon.of(org.kordamp.ikonli.fontawesome5.FontAwesomeSolid.CHART_BAR, 16));
             
             tabPane.setTabMinWidth(80);
 
             tabTurnos.setStyle("-fx-background-color: #27ae60;");
 
-            tabPane.getTabs().addAll(tabTurnos, tabUsers, tabCats, tabCarr);
+            tabPane.getTabs().addAll(tabTurnos, tabUsers, tabCats, tabCarr, tabMetricas);
             contenido = tabPane;
         } else {
             // USER: solo vista de turnos
@@ -334,6 +337,23 @@ public class PanelAdmin extends Application {
                         "-fx-font-size: 14px;"
         );
 
+        // Añadir listener para actualizar el puesto de la botonera en el backend
+        comboPuestos.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) {
+                new Thread(() -> {
+                    try {
+                        URL url = new URL("http://" + ConfigManager.getIp() + ":8080/api/turnos/botonera/puesto/" + newVal);
+                        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                        conn.setRequestMethod("PUT");
+                        conn.getResponseCode();
+                        conn.disconnect();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }).start();
+            }
+        });
+
         puestoContainer.getChildren().addAll(lblPuesto, comboPuestos);
 
         // Sección de categoría
@@ -399,12 +419,22 @@ public class PanelAdmin extends Application {
         btnLlamarTurno.setGraphic(FontIcon.of(org.kordamp.ikonli.fontawesome5.FontAwesomeSolid.BULLHORN, 14, Color.WHITE));
         btnLlamarTurno.setOnAction(e -> llamarSiguienteTurno());
 
+        // Botón finalizar atención
+        Button btnFinalizarTurno = createStyledButton("FINALIZAR ATENCIÓN", "#e67e22", "#d35400");
+        btnFinalizarTurno.setGraphic(FontIcon.of(org.kordamp.ikonli.fontawesome5.FontAwesomeSolid.CHECK_SQUARE, 14, Color.WHITE));
+        btnFinalizarTurno.setOnAction(e -> finalizarAtencionManual());
+
         // Botón re-llamar turno (todos los roles)
         Button btnReLlamarTurno = createStyledButton("RE-LLAMAR TURNO", "#8e44ad", "#9b59b6");
         btnReLlamarTurno.setGraphic(FontIcon.of(org.kordamp.ikonli.fontawesome5.FontAwesomeSolid.BELL, 14, Color.WHITE));
         btnReLlamarTurno.setOnAction(e -> reLlamarTurnoActual());
 
-        botonesContainer.getChildren().addAll(btnLlamarTurno, btnReLlamarTurno);
+        // Botón transferir turno
+        Button btnTransferirTurno = createStyledButton("TRANSFERIR TURNO", "#2980b9", "#3498db");
+        btnTransferirTurno.setGraphic(FontIcon.of(org.kordamp.ikonli.fontawesome5.FontAwesomeSolid.EXCHANGE_ALT, 14, Color.WHITE));
+        btnTransferirTurno.setOnAction(e -> mostrarDialogoTransferencia());
+
+        botonesContainer.getChildren().addAll(btnLlamarTurno, btnFinalizarTurno, btnReLlamarTurno, btnTransferirTurno);
 
         // Botón reiniciar turnos (solo ADMIN)
         if (esAdmin) {
@@ -884,12 +914,24 @@ private void actualizarTablaUnificada() {
                     Turno turno = mapper.readValue(input, Turno.class);
 
                     Platform.runLater(() -> {
+                        // Si el turno cambió, reseteamos la bandera de notificación
+                        if (idTurnoActual == null || !idTurnoActual.equals(turno.getId())) {
+                            calificacionNotificada = false;
+                        }
+
                         idTurnoActual = turno.getId();
                         lblTurnoActual.setText(String.valueOf(turno.getNumero()));
                         Categoria cat = turno.getCategoria();
                         String nombreCat = (cat != null) ? cat.getNombre() : "-";
                         lblCategoria.setText("Categoría: " + nombreCat);
                         playUpdateAnimation(lblTurnoActual);
+
+                        // Comprobar si ya fue calificado y notificar
+                        String calif = turno.getCalificacion();
+                        if (calif != null && !calif.isEmpty() && !calif.equals("NO CALIFICADO") && !calificacionNotificada) {
+                            calificacionNotificada = true;
+                            mostrarAlerta("Atención Finalizada", "El cliente ha calificado el servicio. Puedes llamar al siguiente turno.");
+                        }
                     });
                 } else {
                     Platform.runLater(() -> {
@@ -916,11 +958,31 @@ private void actualizarTablaUnificada() {
     private void llamarSiguienteTurno() {
         showLoading(true);
 
+        // Si hay un turno actual que no ha sido cerrado manualmente, se cierra con NO CALIFICADO
+        if (idTurnoActual != null) {
+            enviarFinalizacionAtencion(idTurnoActual, "NO CALIFICADO", "Cerrado automáticamente al llamar siguiente");
+        }
+
         Timeline delay = new Timeline(new KeyFrame(Duration.millis(800), e -> {
             avanzarTurno(comboPuestos.getValue());
             showLoading(false);
         }));
         delay.play();
+    }
+
+    private void finalizarAtencionManual() {
+        if (idTurnoActual != null) {
+            enviarFinalizacionAtencion(idTurnoActual, "NO CALIFICADO", "Finalizado manualmente por el cajero");
+            Platform.runLater(() -> {
+                idTurnoActual = null;
+                lblTurnoActual.setText("---");
+                lblCategoria.setText("Sin turnos llamados");
+                actualizarEstadisticas();
+                playSuccessAnimation();
+            });
+        } else {
+            mostrarAlerta("Atención", "No hay un turno actual para finalizar.");
+        }
     }
 
     private void reLlamarTurnoActual() {
@@ -1104,6 +1166,199 @@ private void actualizarEstadisticas() {
 }
 
 
+
+    private void mostrarDialogoCalificacion() {
+        if (idTurnoActual == null) {
+            mostrarAlerta("Atención", "No hay un turno actual para finalizar.");
+            return;
+        }
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Finalizar Atención");
+        dialog.setHeaderText("Califique el servicio brindado:");
+
+        VBox content = new VBox(15);
+        content.setPadding(new Insets(20));
+
+        HBox califBox = new HBox(10);
+        califBox.setAlignment(Pos.CENTER);
+        
+        Button btnMalo = createStyledButton("MALO", "#e74c3c", "#c0392b");
+        Button btnReg = createStyledButton("REGULAR", "#f1c40f", "#f39c12");
+        Button btnBue = createStyledButton("BUENO", "#3498db", "#2980b9");
+        Button btnExc = createStyledButton("EXCELENTE", "#2ecc71", "#27ae60");
+        
+        final String[] calificacion = {"NO CALIFICADO"};
+        
+        btnMalo.setOnAction(e -> calificacion[0] = "MALO");
+        btnReg.setOnAction(e -> calificacion[0] = "REGULAR");
+        btnBue.setOnAction(e -> calificacion[0] = "BUENO");
+        btnExc.setOnAction(e -> calificacion[0] = "EXCELENTE");
+        
+        califBox.getChildren().addAll(btnMalo, btnReg, btnBue, btnExc);
+
+        TextArea txtObs = new TextArea();
+        txtObs.setPromptText("Observaciones (Opcional)");
+        txtObs.setPrefRowCount(3);
+
+        content.getChildren().addAll(new Label("Seleccione calificación:"), califBox, new Label("Observaciones:"), txtObs);
+        dialog.getDialogPane().setContent(content);
+        
+        ButtonType btnConfirmar = new ButtonType("Confirmar", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(btnConfirmar, ButtonType.CANCEL);
+
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == btnConfirmar) {
+                enviarFinalizacionAtencion(idTurnoActual, calificacion[0], txtObs.getText());
+                // Evita que el siguiente turno cierre este otra vez
+                idTurnoActual = null;
+                Platform.runLater(() -> {
+                    lblTurnoActual.setText("---");
+                    lblCategoria.setText("Turno finalizado");
+                });
+            }
+            return dialogButton;
+        });
+
+        dialog.showAndWait();
+    }
+
+    private void enviarFinalizacionAtencion(Long turnoId, String calificacion, String obs) {
+        new Thread(() -> {
+            try {
+                URL url = new URL("http://" + ConfigManager.getIp() + ":8080/api/turnos/" + turnoId + "/finalizar");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+                
+                Map<String, String> data = new HashMap<>();
+                data.put("calificacion", calificacion);
+                data.put("observaciones", obs);
+                
+                ObjectMapper mapper = new ObjectMapper();
+                mapper.writeValue(conn.getOutputStream(), data);
+                
+                if (conn.getResponseCode() == 200) {
+                    Platform.runLater(this::actualizarEstadisticas);
+                }
+                conn.disconnect();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    private void mostrarDialogoTransferencia() {
+        if (idTurnoActual == null) {
+            mostrarAlerta("Atención", "No hay un turno actual para transferir.");
+            return;
+        }
+
+        // Cargar categorías disponibles
+        java.util.List<Categoria> categoriasDisponibles = cargarCategoriasSincrono();
+        if (categoriasDisponibles.isEmpty()) {
+            mostrarAlerta("Error", "No se encontraron categorías disponibles.");
+            return;
+        }
+
+        Dialog<javafx.util.Pair<Categoria, Integer>> dialog = new Dialog<>();
+        dialog.setTitle("Transferir Turno");
+        dialog.setHeaderText("Seleccione el área a la que desea transferir el turno actual:");
+
+        ComboBox<Categoria> comboCategorias = new ComboBox<>();
+        comboCategorias.getItems().addAll(categoriasDisponibles);
+        
+        // Formateador para mostrar solo el nombre
+        comboCategorias.setCellFactory(lv -> new javafx.scene.control.ListCell<Categoria>() {
+            @Override
+            protected void updateItem(Categoria item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty ? null : item.getNombre());
+            }
+        });
+        comboCategorias.setButtonCell(new javafx.scene.control.ListCell<Categoria>() {
+            @Override
+            protected void updateItem(Categoria item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty ? null : item.getNombre());
+            }
+        });
+
+        if (!categoriasDisponibles.isEmpty()) {
+            comboCategorias.getSelectionModel().selectFirst();
+        }
+
+        ComboBox<String> comboPuestos = new ComboBox<>();
+        comboPuestos.getItems().addAll("Cualquiera", "1", "2", "3", "4", "5"); // Assuming 5 puestos as in main panel
+        comboPuestos.setValue("Cualquiera");
+
+        VBox content = new VBox(10);
+        content.getChildren().addAll(
+            new Label("Seleccione Área:"), comboCategorias,
+            new Label("Seleccione Puesto/Caja:"), comboPuestos
+        );
+        dialog.getDialogPane().setContent(content);
+
+        ButtonType btnTransferir = new ButtonType("Transferir", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(btnTransferir, ButtonType.CANCEL);
+
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == btnTransferir) {
+                int puestoVal = comboPuestos.getValue().equals("Cualquiera") ? 0 : Integer.parseInt(comboPuestos.getValue());
+                return new javafx.util.Pair<>(comboCategorias.getValue(), puestoVal);
+            }
+            return null;
+        });
+
+        dialog.showAndWait().ifPresent(resultado -> {
+            enviarTransferencia(idTurnoActual, resultado.getKey().getId(), resultado.getValue());
+        });
+    }
+
+    private java.util.List<Categoria> cargarCategoriasSincrono() {
+        java.util.List<Categoria> lista = new java.util.ArrayList<>();
+        try {
+            URL url = new URL("http://" + ConfigManager.getIp() + ":8080/api/categorias/lista");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            if (conn.getResponseCode() == 200) {
+                ObjectMapper mapper = new ObjectMapper();
+                Categoria[] arr = mapper.readValue(conn.getInputStream(), Categoria[].class);
+                lista = java.util.Arrays.asList(arr);
+            }
+            conn.disconnect();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return lista;
+    }
+
+    private void enviarTransferencia(Long turnoId, int nuevaCategoriaId, int puestoId) {
+        new Thread(() -> {
+            try {
+                URL url = new URL("http://" + ConfigManager.getIp() + ":8080/api/turnos/" + turnoId + "/transferir?nuevaCategoriaId=" + nuevaCategoriaId + (puestoId == 0 ? "" : "&puesto=" + puestoId));
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                
+                if (conn.getResponseCode() == 200) {
+                    idTurnoActual = null;
+                    Platform.runLater(() -> {
+                        lblTurnoActual.setText("---");
+                        lblCategoria.setText("Turno transferido");
+                        mostrarAlerta("Éxito", "El turno fue transferido correctamente.");
+                        actualizarEstadisticas();
+                    });
+                } else {
+                    Platform.runLater(() -> mostrarAlerta("Error", "No se pudo transferir el turno."));
+                }
+                conn.disconnect();
+            } catch (Exception e) {
+                e.printStackTrace();
+                Platform.runLater(() -> mostrarAlerta("Error", "Error de conexión al transferir turno."));
+            }
+        }).start();
+    }
 
     private void showLoading(boolean show) {
         loadingIndicator.setVisible(show);

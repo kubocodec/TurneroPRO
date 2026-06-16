@@ -30,6 +30,19 @@ public class Turno {
 
     private Integer cantidadLlamadas = 1;
 
+    private LocalDateTime fechaLlamada;
+
+    private LocalDateTime fechaFinAtencion;
+
+    private String calificacion;
+
+    @Column(length = 1000)
+    private String observaciones;
+
+    private boolean archivado = false;
+    
+    private Boolean transferido = false;
+
     public Turno() {
     }
 
@@ -123,6 +136,54 @@ public class Turno {
 
     public void setCantidadLlamadas(Integer cantidadLlamadas) {
         this.cantidadLlamadas = cantidadLlamadas;
+    }
+
+    public LocalDateTime getFechaLlamada() {
+        return fechaLlamada;
+    }
+
+    public void setFechaLlamada(LocalDateTime fechaLlamada) {
+        this.fechaLlamada = fechaLlamada;
+    }
+
+    public LocalDateTime getFechaFinAtencion() {
+        return fechaFinAtencion;
+    }
+
+    public void setFechaFinAtencion(LocalDateTime fechaFinAtencion) {
+        this.fechaFinAtencion = fechaFinAtencion;
+    }
+
+    public String getCalificacion() {
+        return calificacion;
+    }
+
+    public void setCalificacion(String calificacion) {
+        this.calificacion = calificacion;
+    }
+
+    public String getObservaciones() {
+        return observaciones;
+    }
+
+    public void setObservaciones(String observaciones) {
+        this.observaciones = observaciones;
+    }
+
+    public boolean isArchivado() {
+        return archivado;
+    }
+
+    public void setArchivado(boolean archivado) {
+        this.archivado = archivado;
+    }
+
+    public Boolean getTransferido() {
+        return transferido;
+    }
+
+    public void setTransferido(Boolean transferido) {
+        this.transferido = transferido;
     }
 }
 

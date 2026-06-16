@@ -19,6 +19,9 @@ public interface ITurnoService {
     List<Turno> obtenerUltimosTurnosAtendidos();
     void reiniciarTurnos();
     Turno rellamarTurno(Long id);
-
-
+    Turno finalizarAtencion(Long turnoId, String calificacion, String observaciones);
+    Turno finalizarAtencionPorPuesto(Integer puesto, String calificacion);
+    com.kubocode.turnero.dto.MetricasUsuarioDTO obtenerMetricasUsuario(Long usuarioId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+    com.kubocode.turnero.dto.MetricasGeneralesDTO obtenerMetricasGenerales(java.time.LocalDateTime start, java.time.LocalDateTime end);
+    Turno transferirTurno(Long turnoId, Long nuevaCategoriaId, Integer puesto);
 }
