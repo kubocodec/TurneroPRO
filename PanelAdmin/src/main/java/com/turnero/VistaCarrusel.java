@@ -21,6 +21,7 @@ import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
+import com.turnero.dto.MensajesPantallaDTO;
 
 public class VistaCarrusel {
 
@@ -62,7 +63,114 @@ public class VistaCarrusel {
 
         galeria.setPadding(new Insets(15));
 
-        root.getChildren().addAll(titulo, toolbar, scroll);
+        // --- SECCIÓN DE MENSAJES INFORMATIVOS ---
+        Separator sep = new Separator();
+        sep.setPadding(new Insets(15, 0, 15, 0));
+
+        Label tituloMensajes = new Label("MENSAJES INFORMATIVOS DE LA PANTALLA");
+        tituloMensajes.setGraphic(FontIcon.of(FontAwesomeSolid.COMMENT_ALT, 20, Color.web("#2c3e50")));
+        tituloMensajes.setFont(Font.font("Arial", FontWeight.BOLD, 18));
+        tituloMensajes.setTextFill(Color.web("#2c3e50"));
+
+        GridPane gridMensajes = new GridPane();
+        gridMensajes.setHgap(15);
+        gridMensajes.setVgap(15);
+        gridMensajes.setPadding(new Insets(20));
+        gridMensajes.setStyle("-fx-background-color: white; -fx-background-radius: 10; -fx-effect: dropshadow(gaussian,rgba(0,0,0,0.05),8,0,0,2);");
+
+        Label lblHeader = new Label("Mensaje Superior (Header):");
+        lblHeader.setFont(Font.font("Arial", FontWeight.BOLD, 13));
+        lblHeader.setTextFill(Color.web("#2c3e50"));
+        TextField txtHeader = new TextField();
+        txtHeader.setPrefWidth(600);
+        txtHeader.setPromptText("Ej. ¡Bienvenidos! Manténganse atentos a su turno");
+        txtHeader.setStyle("-fx-background-radius: 6; -fx-padding: 8;");
+
+        Label lblFooter = new Label("Mensaje Inferior (Footer/Marquesina):");
+        lblFooter.setFont(Font.font("Arial", FontWeight.BOLD, 13));
+        lblFooter.setTextFill(Color.web("#2c3e50"));
+        TextField txtFooter = new TextField();
+        txtFooter.setPrefWidth(600);
+        txtFooter.setPromptText("Ej. Sistema desarrollado por KuboCode - Mantenga la distancia y espere su turno");
+        txtFooter.setStyle("-fx-background-radius: 6; -fx-padding: 8;");
+
+        Button btnGuardarMensajes = new Button("Guardar Mensajes");
+        btnGuardarMensajes.setGraphic(FontIcon.of(FontAwesomeSolid.SAVE, 13, Color.WHITE));
+        btnGuardarMensajes.setStyle("-fx-background-color: #27ae60; -fx-text-fill: white; -fx-background-radius: 6; -fx-font-size: 13px; -fx-cursor: hand; -fx-font-weight: bold;");
+        btnGuardarMensajes.setPrefHeight(35);
+
+        Label lblStatusMensajes = new Label();
+        lblStatusMensajes.setFont(Font.font("Arial", 13));
+
+        HBox boxBotonMensajes = new HBox(15, btnGuardarMensajes, lblStatusMensajes);
+        boxBotonMensajes.setAlignment(Pos.CENTER_LEFT);
+
+        gridMensajes.add(lblHeader, 0, 0);
+        gridMensajes.add(txtHeader, 1, 0);
+        gridMensajes.add(lblFooter, 0, 1);
+        gridMensajes.add(txtFooter, 1, 1);
+        gridMensajes.add(boxBotonMensajes, 1, 2);
+
+        // Cargar mensajes actuales del servidor al iniciar
+        new Thread(() -> {
+            try {
+                URL url = new URL("http://" + ConfigManager.getIp() + ":8080/api/config/mensajes");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(3000);
+                if (conn.getResponseCode() == 200) {
+                    MensajesPantallaDTO dto = new ObjectMapper().readValue(conn.getInputStream(), MensajesPantallaDTO.class);
+                    Platform.runLater(() -> {
+                        txtHeader.setText(dto.getMensajeHeader());
+                        txtFooter.setText(dto.getMensajeFooter());
+                    });
+                }
+            } catch (Exception ex) {
+                Platform.runLater(() -> {
+                    lblStatusMensajes.setText("⚠️ No se pudieron cargar los mensajes desde el servidor.");
+                    lblStatusMensajes.setTextFill(Color.web("#d35400"));
+                });
+            }
+        }).start();
+
+        // Acción al guardar
+        btnGuardarMensajes.setOnAction(ev -> {
+            MensajesPantallaDTO dto = new MensajesPantallaDTO();
+            dto.setMensajeHeader(txtHeader.getText().trim());
+            dto.setMensajeFooter(txtFooter.getText().trim());
+
+            lblStatusMensajes.setText("Guardando...");
+            lblStatusMensajes.setTextFill(Color.web("#7f8c8d"));
+
+            new Thread(() -> {
+                try {
+                    URL url = new URL("http://" + ConfigManager.getIp() + ":8080/api/config/mensajes");
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setRequestProperty("Content-Type", "application/json");
+                    conn.setDoOutput(true);
+                    new ObjectMapper().writeValue(conn.getOutputStream(), dto);
+
+                    int code = conn.getResponseCode();
+                    Platform.runLater(() -> {
+                        if (code == 200) {
+                            lblStatusMensajes.setText("✅ Mensajes guardados correctamente");
+                            lblStatusMensajes.setTextFill(Color.web("#27ae60"));
+                        } else {
+                            lblStatusMensajes.setText("❌ Error al guardar (código " + code + ")");
+                            lblStatusMensajes.setTextFill(Color.web("#e74c3c"));
+                        }
+                    });
+                } catch (Exception ex) {
+                    Platform.runLater(() -> {
+                        lblStatusMensajes.setText("❌ Error de conexión: " + ex.getMessage());
+                        lblStatusMensajes.setTextFill(Color.web("#e74c3c"));
+                    });
+                }
+            }).start();
+        });
+
+        root.getChildren().addAll(titulo, toolbar, scroll, sep, tituloMensajes, gridMensajes);
         cargarImagenes();
         return root;
     }

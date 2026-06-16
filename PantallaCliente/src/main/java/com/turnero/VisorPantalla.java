@@ -43,8 +43,19 @@ import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
 import javax.sound.sampled.FloatControl;
+import javafx.animation.TranslateTransition;
+import javafx.animation.Interpolator;
+import javafx.application.Platform;
+import com.turnero.dto.MensajesPantallaDTO;
 
 public class VisorPantalla extends Application {
+
+    private Label bienvenidaLabel = new Label("¡Bienvenidos! Manténganse atentos a su turno");
+    private Label footerText = new Label("Sistema desarrollado por KuboCode - Mantenga la distancia y espere su turno");
+    private Pane footerPane = new Pane();
+    private TranslateTransition marquesinaAnimation;
+    private String currentHeader = "";
+    private String currentFooter = "";
 
     private VBox filasContainer = new VBox(8);
     private Label relojLabel = new Label();
@@ -164,6 +175,13 @@ public class VisorPantalla extends Application {
                 new KeyFrame(Duration.seconds(8)));
         carruselTimeline.setCycleCount(Timeline.INDEFINITE);
         carruselTimeline.play();
+
+        // Timeline mensajes informativos dinámicos (cada 10 segundos)
+        Timeline mensajesTimeline = new Timeline(
+                new KeyFrame(Duration.seconds(0), e -> cargarMensajesDinamicos()),
+                new KeyFrame(Duration.seconds(10)));
+        mensajesTimeline.setCycleCount(Timeline.INDEFINITE);
+        mensajesTimeline.play();
     }
 
     // ---- HEADER ----
@@ -181,11 +199,10 @@ public class VisorPantalla extends Application {
         tiempoContainer.setAlignment(Pos.CENTER);
         tiempoContainer.getChildren().addAll(relojLabel, fechaLabel);
 
-        Label bienvenida = new Label("¡Bienvenidos! Manténganse atentos a su turno");
-        bienvenida.setFont(Font.font("Arial", FontWeight.NORMAL, 35));
-        bienvenida.setTextFill(Color.WHITE);
+        bienvenidaLabel.setFont(Font.font("Arial", FontWeight.NORMAL, 35));
+        bienvenidaLabel.setTextFill(Color.WHITE);
 
-        barraInfo.getChildren().addAll(bienvenida, tiempoContainer);
+        barraInfo.getChildren().addAll(bienvenidaLabel, tiempoContainer);
         headerCompleto.getChildren().addAll(barraInfo);
         return headerCompleto;
     }
@@ -289,14 +306,92 @@ public class VisorPantalla extends Application {
         HBox footer = new HBox();
         footer.setPrefHeight(60);
         footer.setStyle("-fx-background-color: #2c3e50;");
-        footer.setAlignment(Pos.CENTER);
+        footer.setAlignment(Pos.CENTER_LEFT);
 
-        Label footerText = new Label("Sistema desarrollado por KuboCode - Mantenga la distancia y espere su turno");
         footerText.setFont(Font.font("Arial", FontWeight.NORMAL, 24));
         footerText.setTextFill(Color.WHITE);
+        footerText.setWrapText(false);
 
-        footer.getChildren().add(footerText);
+        footerPane.getChildren().clear();
+        footerPane.getChildren().add(footerText);
+        footerPane.setPrefHeight(60);
+        footerPane.prefWidthProperty().bind(footer.widthProperty());
+
+        javafx.scene.shape.Rectangle clip = new javafx.scene.shape.Rectangle();
+        clip.heightProperty().bind(footerPane.heightProperty());
+        clip.widthProperty().bind(footerPane.widthProperty());
+        footerPane.setClip(clip);
+
+        footerText.layoutYProperty().bind(footerPane.heightProperty().subtract(footerText.heightProperty()).divide(2));
+
+        footer.getChildren().add(footerPane);
+
+        iniciarMarquesina();
+
+        footerPane.widthProperty().addListener((obs, oldVal, newVal) -> iniciarMarquesina());
+
         return footer;
+    }
+
+    private void iniciarMarquesina() {
+        Platform.runLater(() -> {
+            if (marquesinaAnimation != null) {
+                marquesinaAnimation.stop();
+            }
+
+            double textWidth = footerText.getLayoutBounds().getWidth();
+            if (textWidth <= 0) {
+                textWidth = footerText.getText().length() * 14.0;
+            }
+
+            double paneWidth = footerPane.getWidth() > 0 ? footerPane.getWidth() : 1920.0;
+
+            footerText.setTranslateX(paneWidth);
+
+            double pixelsPerSecond = 90.0;
+            double totalDistance = paneWidth + textWidth;
+            double durationSeconds = totalDistance / pixelsPerSecond;
+            if (durationSeconds <= 0) durationSeconds = 15;
+
+            marquesinaAnimation = new TranslateTransition(Duration.seconds(durationSeconds), footerText);
+            marquesinaAnimation.setFromX(paneWidth);
+            marquesinaAnimation.setToX(-textWidth);
+            marquesinaAnimation.setCycleCount(TranslateTransition.INDEFINITE);
+            marquesinaAnimation.setInterpolator(Interpolator.LINEAR);
+            marquesinaAnimation.play();
+        });
+    }
+
+    private void cargarMensajesDinamicos() {
+        new Thread(() -> {
+            try {
+                URL url = new URL("http://" + Config.getIp() + ":" + Config.getPort() + "/api/config/mensajes");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(3000);
+                conn.setReadTimeout(3000);
+                if (conn.getResponseCode() == 200) {
+                    ObjectMapper mapper = new ObjectMapper();
+                    MensajesPantallaDTO dto = mapper.readValue(conn.getInputStream(), MensajesPantallaDTO.class);
+                    Platform.runLater(() -> {
+                        String newHeader = dto.getMensajeHeader() != null ? dto.getMensajeHeader() : "";
+                        String newFooter = dto.getMensajeFooter() != null ? dto.getMensajeFooter() : "";
+
+                        if (!newHeader.equals(currentHeader)) {
+                            currentHeader = newHeader;
+                            bienvenidaLabel.setText(currentHeader);
+                        }
+                        if (!newFooter.equals(currentFooter)) {
+                            currentFooter = newFooter;
+                            footerText.setText(currentFooter);
+                            iniciarMarquesina();
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                // Silencioso
+            }
+        }).start();
     }
 
     // ---- ACTUALIZAR RELOJ ----
