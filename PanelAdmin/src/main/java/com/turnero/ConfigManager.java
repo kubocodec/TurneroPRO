@@ -19,83 +19,87 @@ public class ConfigManager {
         return new File(folder, CONFIG_FILE_NAME);
     }
 
-    public static String getIp() {
+    private static synchronized Properties loadProperties() {
         File file = getConfigFile();
-        if (!file.exists()) return null;
-        
-        try (FileInputStream fis = new FileInputStream(file)) {
-            Properties props = new Properties();
-            props.load(fis);
-            String ip = props.getProperty(IP_KEY);
-            return (ip != null && !ip.trim().isEmpty()) ? ip.trim() : null;
+        Properties props = new Properties();
+        boolean changed = false;
+
+        if (file.exists()) {
+            try (FileInputStream fis = new FileInputStream(file)) {
+                props.load(fis);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        // Ensure default properties exist
+        if (!props.containsKey("botonera.puerto")) {
+            props.setProperty("botonera.puerto", "COM3");
+            changed = true;
+        }
+        if (!props.containsKey("botonera.habilitada")) {
+            props.setProperty("botonera.habilitada", "false");
+            changed = true;
+        }
+        if (!props.containsKey("puestos.maximo")) {
+            props.setProperty("puestos.maximo", "21");
+            changed = true;
+        }
+
+        if (changed) {
+            saveProperties(props);
+        }
+
+        return props;
+    }
+
+    private static synchronized void saveProperties(Properties props) {
+        File file = getConfigFile();
+        try (FileOutputStream fos = new FileOutputStream(file)) {
+            props.store(fos, "Configuracion del Sistema de Turnos");
         } catch (IOException e) {
             e.printStackTrace();
-            return null;
         }
+    }
+
+    public static String getIp() {
+        Properties props = loadProperties();
+        String ip = props.getProperty(IP_KEY);
+        return (ip != null && !ip.trim().isEmpty()) ? ip.trim() : null;
     }
 
     public static void saveIp(String ip) {
-        Properties props = new Properties();
-        try {
-            File file = getConfigFile();
-            if (file.exists()) {
-                try (FileInputStream fis = new FileInputStream(file)) {
-                    props.load(fis);
-                }
-            }
-            props.setProperty(IP_KEY, ip.trim());
-            try (FileOutputStream fos = new FileOutputStream(file)) {
-                props.store(fos, "Configuracion del Sistema de Turnos");
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        Properties props = loadProperties();
+        props.setProperty(IP_KEY, ip.trim());
+        saveProperties(props);
     }
 
     public static String getBotoneraPuerto() {
-        File file = getConfigFile();
-        if (!file.exists()) return "COM3";
-        
-        try (FileInputStream fis = new FileInputStream(file)) {
-            Properties props = new Properties();
-            props.load(fis);
-            String puerto = props.getProperty("botonera.puerto", "COM3");
-            return (puerto != null && !puerto.trim().isEmpty()) ? puerto.trim() : "COM3";
-        } catch (IOException e) {
-            return "COM3";
-        }
+        Properties props = loadProperties();
+        String puerto = props.getProperty("botonera.puerto", "COM3");
+        return (puerto != null && !puerto.trim().isEmpty()) ? puerto.trim() : "COM3";
     }
 
     public static boolean isBotoneraHabilitada() {
-        File file = getConfigFile();
-        if (!file.exists()) return false;
-        
-        try (FileInputStream fis = new FileInputStream(file)) {
-            Properties props = new Properties();
-            props.load(fis);
-            String hab = props.getProperty("botonera.habilitada", "false");
-            return Boolean.parseBoolean(hab);
-        } catch (IOException e) {
-            return false;
-        }
+        Properties props = loadProperties();
+        String hab = props.getProperty("botonera.habilitada", "false");
+        return Boolean.parseBoolean(hab);
     }
 
     public static void saveBotoneraConfig(String puerto, boolean habilitada) {
-        Properties props = new Properties();
+        Properties props = loadProperties();
+        props.setProperty("botonera.puerto", puerto.trim());
+        props.setProperty("botonera.habilitada", String.valueOf(habilitada));
+        saveProperties(props);
+    }
+
+    public static int getMaxPuestos() {
+        Properties props = loadProperties();
+        String maxStr = props.getProperty("puestos.maximo", "21");
         try {
-            File file = getConfigFile();
-            if (file.exists()) {
-                try (FileInputStream fis = new FileInputStream(file)) {
-                    props.load(fis);
-                }
-            }
-            props.setProperty("botonera.puerto", puerto.trim());
-            props.setProperty("botonera.habilitada", String.valueOf(habilitada));
-            try (FileOutputStream fos = new FileOutputStream(file)) {
-                props.store(fos, "Configuracion del Sistema de Turnos");
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+            return Integer.parseInt(maxStr.trim());
+        } catch (Exception e) {
+            return 21;
         }
     }
 }

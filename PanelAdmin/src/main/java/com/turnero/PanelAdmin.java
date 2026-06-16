@@ -325,7 +325,10 @@ public class PanelAdmin extends Application {
         );
 
         comboPuestos = new ComboBox<>();
-        comboPuestos.getItems().addAll(1, 2, 3, 4, 5);
+        int maxPuestos = ConfigManager.getMaxPuestos();
+        for (int i = 1; i <= maxPuestos; i++) {
+            comboPuestos.getItems().add(i);
+        }
         comboPuestos.setValue(1);
         comboPuestos.setMaxWidth(Double.MAX_VALUE);
         comboPuestos.setPrefHeight(40);
@@ -1291,7 +1294,11 @@ private void actualizarEstadisticas() {
         }
 
         ComboBox<String> comboPuestos = new ComboBox<>();
-        comboPuestos.getItems().addAll("Cualquiera", "1", "2", "3", "4", "5"); // Assuming 5 puestos as in main panel
+        comboPuestos.getItems().add("Cualquiera");
+        int maxPuestos = ConfigManager.getMaxPuestos();
+        for (int i = 1; i <= maxPuestos; i++) {
+            comboPuestos.getItems().add(String.valueOf(i));
+        }
         comboPuestos.setValue("Cualquiera");
 
         VBox content = new VBox(10);
