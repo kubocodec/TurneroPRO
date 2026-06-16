@@ -170,9 +170,210 @@ public class VistaCarrusel {
             }).start();
         });
 
-        root.getChildren().addAll(titulo, toolbar, scroll, sep, tituloMensajes, gridMensajes);
+        // --- SECCIÓN DEL LOGO DE LA INSTITUCIÓN ---
+        Separator sepLogo = new Separator();
+        sepLogo.setPadding(new Insets(15, 0, 15, 0));
+
+        Label tituloLogo = new Label("LOGO DE LA INSTITUCIÓN");
+        tituloLogo.setGraphic(FontIcon.of(FontAwesomeSolid.BUILDING, 20, Color.web("#2c3e50")));
+        tituloLogo.setFont(Font.font("Arial", FontWeight.BOLD, 18));
+        tituloLogo.setTextFill(Color.web("#2c3e50"));
+
+        HBox logoContainer = new HBox(30);
+        logoContainer.setPadding(new Insets(20));
+        logoContainer.setStyle("-fx-background-color: white; -fx-background-radius: 10; -fx-effect: dropshadow(gaussian,rgba(0,0,0,0.05),8,0,0,2);");
+        logoContainer.setAlignment(Pos.CENTER_LEFT);
+
+        ImageView currentLogoView = new ImageView();
+        currentLogoView.setFitWidth(150);
+        currentLogoView.setFitHeight(150);
+        currentLogoView.setPreserveRatio(true);
+        currentLogoView.setSmooth(true);
+        
+        StackPane logoPreview = new StackPane(currentLogoView);
+        logoPreview.setPrefSize(180, 180);
+        logoPreview.setStyle("-fx-background-color: #f8f9fa; -fx-border-color: #dee2e6; -fx-border-radius: 8; -fx-background-radius: 8; -fx-border-width: 1px;");
+
+        VBox logoControls = new VBox(15);
+        logoControls.setAlignment(Pos.CENTER_LEFT);
+
+        Label lblLogoDesc = new Label("Sube el logo de la institución. Se mostrará en el turnero físico (kiosco) y se imprimirá en los tickets.\nFormato recomendado: PNG (fondo transparente o blanco).\nTamaño recomendado: 256x256 píxeles para una óptima impresión térmica.");
+        lblLogoDesc.setStyle("-fx-text-fill: #7f8c8d; -fx-font-size: 13px;");
+
+        Button btnSubirLogo = new Button("Subir Logo...");
+        btnSubirLogo.setGraphic(FontIcon.of(FontAwesomeSolid.UPLOAD, 13, Color.WHITE));
+        btnSubirLogo.setStyle("-fx-background-color: #2980b9; -fx-text-fill: white; -fx-background-radius: 6; -fx-font-size: 13px; -fx-cursor: hand; -fx-font-weight: bold;");
+        btnSubirLogo.setPrefHeight(35);
+
+        Button btnEliminarLogo = new Button("Eliminar Logo Custom");
+        btnEliminarLogo.setGraphic(FontIcon.of(FontAwesomeSolid.TRASH, 13, Color.WHITE));
+        btnEliminarLogo.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-background-radius: 6; -fx-font-size: 13px; -fx-cursor: hand; -fx-font-weight: bold;");
+        btnEliminarLogo.setPrefHeight(35);
+
+        Label lblStatusLogo = new Label();
+        lblStatusLogo.setFont(Font.font("Arial", 13));
+
+        HBox actionButtons = new HBox(15, btnSubirLogo, btnEliminarLogo, lblStatusLogo);
+        actionButtons.setAlignment(Pos.CENTER_LEFT);
+
+        logoControls.getChildren().addAll(lblLogoDesc, actionButtons);
+        logoContainer.getChildren().addAll(logoPreview, logoControls);
+
+        btnSubirLogo.setOnAction(ev -> subirLogo(currentLogoView, lblStatusLogo));
+        btnEliminarLogo.setOnAction(ev -> eliminarLogo(currentLogoView, lblStatusLogo));
+
+        cargarLogoEnUI(currentLogoView, lblStatusLogo);
+
+        root.getChildren().addAll(titulo, toolbar, scroll, sep, tituloMensajes, gridMensajes, sepLogo, tituloLogo, logoContainer);
         cargarImagenes();
         return root;
+    }
+
+    private void cargarLogoEnUI(ImageView imageView, Label statusLabel) {
+        new Thread(() -> {
+            try {
+                String logoUrl = "http://" + ConfigManager.getIp() + ":8080/api/config/logo";
+                URL url = new URL(logoUrl);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(3000);
+                int code = conn.getResponseCode();
+                if (code == 200) {
+                    try (InputStream is = conn.getInputStream()) {
+                        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                        byte[] buffer = new byte[4096];
+                        int read;
+                        while ((read = is.read(buffer)) != -1) {
+                            bos.write(buffer, 0, read);
+                        }
+                        byte[] bytes = bos.toByteArray();
+                        Image img = new Image(new ByteArrayInputStream(bytes));
+                        Platform.runLater(() -> {
+                            imageView.setImage(img);
+                            statusLabel.setText("✅ Logo personalizado activo");
+                            statusLabel.setTextFill(Color.web("#27ae60"));
+                        });
+                    }
+                } else {
+                    Platform.runLater(() -> {
+                        imageView.setImage(null);
+                        statusLabel.setText("🏢 Sin logo personalizado (usando predeterminado en kiosco)");
+                        statusLabel.setTextFill(Color.web("#7f8c8d"));
+                    });
+                }
+            } catch (Exception ex) {
+                Platform.runLater(() -> {
+                    imageView.setImage(null);
+                    statusLabel.setText("⚠️ Error al cargar el logo desde el servidor");
+                    statusLabel.setTextFill(Color.web("#d35400"));
+                });
+            }
+        }).start();
+    }
+
+    private void subirLogo(ImageView imageView, Label statusLabel) {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Seleccionar Logo de la Institución");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Imágenes PNG/JPG", "*.png", "*.jpg", "*.jpeg"));
+
+        File archivo = chooser.showOpenDialog(new Stage());
+        if (archivo == null) return;
+
+        final long MAX_BYTES = 5 * 1024 * 1024L; // 5 MB
+        if (archivo.length() > MAX_BYTES) {
+            statusLabel.setText("❌ El archivo de logo supera el límite de 5 MB");
+            statusLabel.setTextFill(Color.web("#c0392b"));
+            return;
+        }
+
+        statusLabel.setText("Subiendo logo...");
+        statusLabel.setTextFill(Color.web("#7f8c8d"));
+
+        new Thread(() -> {
+            try {
+                String boundary = "----WebKitFormBoundary" + System.currentTimeMillis();
+                URL url = new URL("http://" + ConfigManager.getIp() + ":8080/api/config/logo");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+
+                try (OutputStream os = conn.getOutputStream();
+                     PrintWriter pw = new PrintWriter(new OutputStreamWriter(os, "UTF-8"), true)) {
+
+                    pw.append("--").append(boundary).append("\r\n");
+                    pw.append("Content-Disposition: form-data; name=\"archivo\"; filename=\"logo.png\"\r\n");
+                    
+                    String contentType = "image/png";
+                    String nameLower = archivo.getName().toLowerCase();
+                    if (nameLower.endsWith(".jpg") || nameLower.endsWith(".jpeg")) contentType = "image/jpeg";
+
+                    pw.append("Content-Type: ").append(contentType).append("\r\n\r\n");
+                    pw.flush();
+
+                    try (FileInputStream fis = new FileInputStream(archivo)) {
+                        byte[] buf = new byte[4096];
+                        int read;
+                        while ((read = fis.read(buf)) != -1) os.write(buf, 0, read);
+                    }
+                    os.flush();
+
+                    pw.append("\r\n--").append(boundary).append("--\r\n");
+                    pw.flush();
+                }
+
+                final int code = conn.getResponseCode();
+                Platform.runLater(() -> {
+                    if (code == 200) {
+                        statusLabel.setText("✅ Logo subido correctamente");
+                        statusLabel.setTextFill(Color.web("#27ae60"));
+                        cargarLogoEnUI(imageView, statusLabel);
+                    } else {
+                        statusLabel.setText("❌ Error al subir logo (código " + code + ")");
+                        statusLabel.setTextFill(Color.web("#c0392b"));
+                    }
+                });
+            } catch (Exception ex) {
+                Platform.runLater(() -> {
+                    statusLabel.setText("❌ Error de conexión: " + ex.getMessage());
+                    statusLabel.setTextFill(Color.web("#c0392b"));
+                });
+            }
+        }).start();
+    }
+
+    private void eliminarLogo(ImageView imageView, Label statusLabel) {
+        Alert conf = new Alert(Alert.AlertType.CONFIRMATION,
+                "¿Desea eliminar el logo institucional y revertir al predeterminado?",
+                ButtonType.YES, ButtonType.NO);
+        conf.setTitle("Confirmar eliminación");
+        conf.showAndWait().ifPresent(r -> {
+            if (r == ButtonType.YES) {
+                new Thread(() -> {
+                    try {
+                        URL url = new URL("http://" + ConfigManager.getIp() + ":8080/api/config/logo");
+                        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                        conn.setRequestMethod("DELETE");
+                        final int code = conn.getResponseCode();
+                        Platform.runLater(() -> {
+                            if (code == 200) {
+                                statusLabel.setText("✅ Logo eliminado correctamente");
+                                statusLabel.setTextFill(Color.web("#27ae60"));
+                                cargarLogoEnUI(imageView, statusLabel);
+                            } else {
+                                statusLabel.setText("❌ Error al eliminar (código " + code + ")");
+                                statusLabel.setTextFill(Color.web("#c0392b"));
+                            }
+                        });
+                    } catch (Exception ex) {
+                        Platform.runLater(() -> {
+                            statusLabel.setText("❌ Error de conexión");
+                            statusLabel.setTextFill(Color.web("#c0392b"));
+                        });
+                    }
+                }).start();
+            }
+        });
     }
 
     private void cargarImagenes() {

@@ -28,10 +28,17 @@ import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
+import java.io.ByteArrayInputStream;
+
 public class ClientePOS extends Application {
 
     private String categoriaSeleccionada = null;
     private Label resultadoLabel = new Label();
+    private Image logoInstitucion = null;
+    private BufferedImage logoImpresion = null;
     private List<Categoria> listaCategorias = new ArrayList<>();
     private Stage primaryStage;
     private VBox categoriasContainer;
@@ -88,8 +95,11 @@ public class ClientePOS extends Application {
             logoView.setPreserveRatio(true);
             logoView.setSmooth(true);
         } catch (Exception e) {
-            System.err.println("No se pudo cargar el logo: " + e.getMessage());
+            System.err.println("No se pudo cargar el logo local inicial: " + e.getMessage());
         }
+
+        // Cargar logo desde el servidor en segundo plano e inicializar caché de impresión
+        inicializarLogo(logoView);
 
         Label subtitulo = new Label("Seleccione el tipo de servicio que necesita");
         subtitulo.setFont(Font.font("Arial", FontWeight.NORMAL, 28));
@@ -637,12 +647,121 @@ public class ClientePOS extends Application {
         }
     }
 
+    private void inicializarLogo(ImageView logoView) {
+        new Thread(() -> {
+            boolean serverLogoCargado = false;
+            try {
+                String serverIp = ConfigManager.getIp();
+                if (serverIp != null && !serverIp.trim().isEmpty()) {
+                    String logoUrl = "http://" + serverIp + ":8080/api/config/logo";
+                    URL url = new URL(logoUrl);
+                    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                    connection.setRequestMethod("GET");
+                    connection.setConnectTimeout(2000);
+                    connection.setReadTimeout(2000);
+                    if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                        try (InputStream is = connection.getInputStream()) {
+                            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                            byte[] buffer = new byte[4096];
+                            int read;
+                            while ((read = is.read(buffer)) != -1) {
+                                bos.write(buffer, 0, read);
+                            }
+                            byte[] bytes = bos.toByteArray();
+                            Image img = new Image(new ByteArrayInputStream(bytes));
+                            BufferedImage bimg = ImageIO.read(new ByteArrayInputStream(bytes));
+                            
+                            if (img != null && bimg != null) {
+                                this.logoInstitucion = img;
+                                this.logoImpresion = bimg;
+                                serverLogoCargado = true;
+                                if (logoView != null) {
+                                    javafx.application.Platform.runLater(() -> {
+                                        logoView.setImage(img);
+                                    });
+                                }
+                                System.out.println("Logo institucional personalizado cargado correctamente del servidor.");
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("No se pudo obtener el logo del servidor, usando local: " + e.getMessage());
+            }
+
+            if (!serverLogoCargado) {
+                try (InputStream is = getClass().getResourceAsStream("/logo.png")) {
+                    if (is != null) {
+                        this.logoImpresion = ImageIO.read(is);
+                        System.out.println("Logo local predeterminado cargado en caché de impresión.");
+                    }
+                } catch (Exception e) {
+                    System.err.println("No se pudo cargar el logo local en caché de impresión: " + e.getMessage());
+                }
+            }
+        }).start();
+    }
+
+    private void writeEscPosImage(ByteArrayOutputStream bos, BufferedImage image) {
+        if (image == null) return;
+        try {
+            int width = 256;
+            int height = (image.getHeight() * width) / image.getWidth();
+            
+            BufferedImage blackAndWhite = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_BINARY);
+            Graphics2D g2d = blackAndWhite.createGraphics();
+            g2d.drawImage(image, 0, 0, width, height, null);
+            g2d.dispose();
+            
+            int widthBytes = width / 8;
+            
+            // GS v 0 m xL xH yL yH
+            bos.write(0x1D);
+            bos.write(0x76);
+            bos.write(0x30);
+            bos.write(0); // m = 0 (normal)
+            bos.write(widthBytes % 256); // xL
+            bos.write(widthBytes / 256); // xH
+            bos.write(height % 256); // yL
+            bos.write(height / 256); // yH
+            
+            for (int y = 0; y < height; y++) {
+                for (int xByte = 0; xByte < widthBytes; xByte++) {
+                    int byteVal = 0;
+                    for (int bit = 0; bit < 8; bit++) {
+                        int xPixel = xByte * 8 + bit;
+                        int rgb = blackAndWhite.getRGB(xPixel, y);
+                        
+                        int r = (rgb >> 16) & 0xFF;
+                        int g = (rgb >> 8) & 0xFF;
+                        int b = rgb & 0xFF;
+                        double gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                        
+                        if (gray < 160) { // Umbral para color negro
+                            byteVal |= (1 << (7 - bit));
+                        }
+                    }
+                    bos.write(byteVal);
+                }
+            }
+            bos.write("\n".getBytes("CP437"));
+        } catch (Exception e) {
+            System.err.println("Error al escribir imagen en formato ESC/POS: " + e.getMessage());
+        }
+    }
+
     private void imprimirTicket(Turno turno) {
         try {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
+            // Inicializar impresora y alinear al centro
             outputStream.write(new byte[]{0x1B, 0x40});
             outputStream.write(new byte[]{0x1B, 0x61, 0x01});
+
+            // Imprimir logotipo si está en caché
+            if (logoImpresion != null) {
+                writeEscPosImage(outputStream, logoImpresion);
+            }
 
             outputStream.write("Sistema de Turnos\n".getBytes("CP437"));
             outputStream.write("================================\n".getBytes("CP437"));
